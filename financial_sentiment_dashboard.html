@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Financial Sentiment · Market Impact Predictor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #050810;
+    --surface: #0c1120;
+    --surface2: #111827;
+    --border: #1e2d45;
+    --accent-bull: #00e5a0;
+    --accent-bear: #ff3d71;
+    --accent-neu: #f5a623;
+    --accent-blue: #4d9fff;
+    --accent-purple: #a855f7;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --text-mid: #94a3b8;
+    --glow-bull: 0 0 20px rgba(0,229,160,0.25);
+    --glow-bear: 0 0 20px rgba(255,61,113,0.25);
+    --glow-blue: 0 0 20px rgba(77,159,255,0.15);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Grid background ── */
+  body::before {
+    content: '';
+    position: fixed; inset:0;
+    background-image:
+      linear-gradient(rgba(77,159,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(77,159,255,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Header ── */
+  header {
+    position: relative; z-index: 10;
+    padding: 32px 40px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(180deg, rgba(5,8,16,0.95) 0%, transparent 100%);
+  }
+  .logo-area { display:flex; align-items:center; gap:16px; }
+  .logo-icon {
+    width:44px; height:44px; border-radius:10px;
+    background: linear-gradient(135deg, #4d9fff, #a855f7);
+    display:flex; align-items:center; justify-content:center;
+    font-size: 20px; box-shadow: var(--glow-blue);
+  }
+  .logo-text h1 {
+    font-size: 18px; font-weight: 800; letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #e2e8f0, #94a3b8);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .logo-text p { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text-dim); margin-top:2px; }
+
+  .header-stats { display:flex; gap:24px; }
+  .stat-pill {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 6px 16px;
+    font-family: 'Space Mono', monospace; font-size:11px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .stat-pill .dot { width:6px; height:6px; border-radius:50%; }
+  .dot-green { background: var(--accent-bull); box-shadow: 0 0 6px var(--accent-bull); }
+  .dot-red   { background: var(--accent-bear); box-shadow: 0 0 6px var(--accent-bear); }
+  .dot-blue  { background: var(--accent-blue); }
+
+  /* ── Main layout ── */
+  .main { position:relative; z-index:1; padding: 32px 40px; }
+
+  .grid-3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:20px; margin-bottom:20px; }
+  .grid-2 { display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:20px; }
+  .grid-5-3 { display:grid; grid-template-columns: 5fr 3fr; gap:20px; margin-bottom:20px; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    animation: fadeUp 0.5s ease both;
+  }
+  .card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:1px;
+    background: linear-gradient(90deg, transparent, rgba(77,159,255,0.4), transparent);
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform: translateY(20px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+
+  .card-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--text-dim); margin-bottom: 12px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .card-label::before {
+    content:''; width:4px; height:4px; border-radius:50%;
+    background: var(--accent-blue);
+  }
+
+  /* ── KPI Metric cards ── */
+  .metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 24px;
+    display:flex; flex-direction:column;
+    animation: fadeUp 0.5s ease both;
+    position:relative; overflow:hidden;
+  }
+  .metric-card.bull { border-color: rgba(0,229,160,0.3); }
+  .metric-card.bear { border-color: rgba(255,61,113,0.3); }
+  .metric-card.neu  { border-color: rgba(245,166,35,0.3); }
+  .metric-card .bg-glow {
+    position:absolute; top:-40px; right:-40px;
+    width:120px; height:120px; border-radius:50%;
+    opacity: 0.08; pointer-events:none;
+  }
+  .metric-card.bull .bg-glow { background: var(--accent-bull); }
+  .metric-card.bear .bg-glow { background: var(--accent-bear); }
+  .metric-card.neu  .bg-glow { background: var(--accent-neu); }
+
+  .metric-label {
+    font-family: 'Space Mono', monospace; font-size: 9px;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--text-dim); margin-bottom: 10px;
+  }
+  .metric-value {
+    font-size: 36px; font-weight: 800; line-height:1;
+    margin-bottom:6px;
+  }
+  .metric-card.bull .metric-value { color: var(--accent-bull); }
+  .metric-card.bear .metric-value { color: var(--accent-bear); }
+  .metric-card.neu  .metric-value { color: var(--accent-neu); }
+  .metric-sub {
+    font-family: 'Space Mono', monospace; font-size:10px; color: var(--text-dim);
+  }
+
+  /* ── Input area ── */
+  .input-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px; padding: 24px;
+    margin-bottom: 20px;
+    animation: fadeUp 0.4s ease both;
+  }
+  .input-section h2 {
+    font-size:14px; font-weight:700; margin-bottom:16px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .input-row { display:flex; gap:12px; }
+  .headline-input {
+    flex:1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-family: 'Space Mono', monospace; font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .headline-input:focus { border-color: var(--accent-blue); }
+  .analyze-btn {
+    background: linear-gradient(135deg, #4d9fff, #a855f7);
+    border:none; border-radius:10px; padding: 12px 24px;
+    color:#fff; font-family: 'Syne', sans-serif; font-size:13px; font-weight:700;
+    cursor:pointer; white-space:nowrap;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .analyze-btn:hover { opacity:0.9; transform:translateY(-1px); }
+  .analyze-btn:active { transform:translateY(0); }
+
+  /* ── Live result ── */
+  #live-result {
+    margin-top: 16px; padding: 16px;
+    background: var(--bg); border-radius: 10px; border: 1px solid var(--border);
+    display:none;
+    animation: fadeUp 0.3s ease;
+  }
+  .result-row { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  .result-badge {
+    padding: 4px 12px; border-radius:20px; font-size:11px; font-weight:700;
+    font-family: 'Space Mono', monospace; text-transform:uppercase;
+  }
+  .badge-bull { background: rgba(0,229,160,0.15); color: var(--accent-bull); border:1px solid rgba(0,229,160,0.3); }
+  .badge-bear { background: rgba(255,61,113,0.15); color: var(--accent-bear); border:1px solid rgba(255,61,113,0.3); }
+  .badge-neu  { background: rgba(245,166,35,0.15); color: var(--accent-neu);  border:1px solid rgba(245,166,35,0.3); }
+  .badge-pos  { background: rgba(0,229,160,0.1);   color: var(--accent-bull); border:1px solid rgba(0,229,160,0.2); }
+  .badge-neg  { background: rgba(255,61,113,0.1);  color: var(--accent-bear); border:1px solid rgba(255,61,113,0.2); }
+  .badge-neutral-s { background: rgba(148,163,184,0.1); color: var(--text-mid); border:1px solid rgba(148,163,184,0.2); }
+
+  .prob-bars { display:flex; gap:12px; margin-top:12px; flex-wrap:wrap; }
+  .prob-bar-item { flex:1; min-width:120px; }
+  .prob-bar-label { font-family:'Space Mono',monospace; font-size:9px; color:var(--text-dim); margin-bottom:4px; text-transform:uppercase; letter-spacing:.08em; }
+  .prob-bar-track { height:6px; background:var(--surface2); border-radius:3px; overflow:hidden; }
+  .prob-bar-fill { height:100%; border-radius:3px; transition: width 0.6s ease; }
+  .fill-bull { background: var(--accent-bull); }
+  .fill-bear { background: var(--accent-bear); }
+  .fill-neu  { background: var(--accent-neu); }
+  .prob-bar-pct { font-family:'Space Mono',monospace; font-size:10px; color:var(--text-mid); margin-top:3px; }
+
+  /* ── Headlines table ── */
+  .headlines-table { width:100%; border-collapse:collapse; }
+  .headlines-table th {
+    font-family:'Space Mono',monospace; font-size:9px; text-transform:uppercase;
+    letter-spacing:.1em; color:var(--text-dim); text-align:left;
+    padding: 0 0 12px 0; border-bottom: 1px solid var(--border);
+  }
+  .headlines-table tr.data-row {
+    border-bottom: 1px solid rgba(30,45,69,0.5);
+    animation: fadeUp 0.4s ease both;
+  }
+  .headlines-table tr.data-row:hover { background: rgba(77,159,255,0.03); }
+  .headlines-table td {
+    padding: 12px 0; vertical-align:middle;
+  }
+  .hl-text {
+    font-size:12px; color:var(--text); max-width:380px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .compound-bar {
+    display:flex; align-items:center; gap:8px; width:120px;
+  }
+  .compound-track {
+    flex:1; height:4px; background:var(--surface2); border-radius:2px; position:relative;
+  }
+  .compound-fill {
+    position:absolute; top:0; height:100%; border-radius:2px;
+    transition: width 0.5s ease;
+  }
+  .compound-fill.pos { right:50%; background:var(--accent-bull); }
+  .compound-fill.neg { left:50%; background:var(--accent-bear); }
+  .compound-fill.ctr { left:50%; background:var(--accent-neu); width:2px; }
+  .compound-val { font-family:'Space Mono',monospace; font-size:10px; color:var(--text-mid); white-space:nowrap; }
+
+  .conf-ring {
+    width:36px; height:36px; position:relative;
+  }
+  .conf-ring svg { width:100%; height:100%; transform:rotate(-90deg); }
+  .conf-ring-val {
+    position:absolute; top:50%; left:50%;
+    transform: translate(-50%,-50%);
+    font-family:'Space Mono',monospace; font-size:7px; color:var(--text-mid);
+  }
+
+  /* ── Charts ── */
+  .chart-wrap { position:relative; width:100%; }
+
+  /* ── Stock selector ── */
+  .ticker-tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .ticker-tab {
+    padding: 6px 14px; border-radius:20px; font-size:12px; font-weight:600;
+    border: 1px solid var(--border); background:transparent;
+    color:var(--text-dim); cursor:pointer; font-family:'Space Mono',monospace;
+    transition: all 0.2s;
+  }
+  .ticker-tab.active {
+    background: rgba(77,159,255,0.15); border-color: var(--accent-blue);
+    color: var(--accent-blue);
+  }
+
+  /* ── Feature importance bars ── */
+  .feat-row { margin-bottom:10px; }
+  .feat-header { display:flex; justify-content:space-between; margin-bottom:4px; }
+  .feat-name { font-family:'Space Mono',monospace; font-size:10px; color:var(--text-mid); }
+  .feat-pct  { font-family:'Space Mono',monospace; font-size:10px; color:var(--text-dim); }
+  .feat-track { height:6px; background:var(--surface2); border-radius:3px; overflow:hidden; }
+  .feat-fill  { height:100%; background:linear-gradient(90deg,#4d9fff,#a855f7); border-radius:3px; }
+
+  /* ── Model accuracy display ── */
+  .model-row { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--border); }
+  .model-name { font-size:13px; font-weight:600; }
+  .model-acc  { font-family:'Space Mono',monospace; font-size:14px; font-weight:700; }
+  .acc-bull { color: var(--accent-bull); }
+  .acc-blue { color: var(--accent-blue); }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width:4px; }
+  ::-webkit-scrollbar-track { background:var(--bg); }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+  .delay-1 { animation-delay: 0.1s; }
+  .delay-2 { animation-delay: 0.2s; }
+  .delay-3 { animation-delay: 0.3s; }
+  .delay-4 { animation-delay: 0.4s; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo-area">
+    <div class="logo-icon">📊</div>
+    <div class="logo-text">
+      <h1>SentimentIQ · Financial</h1>
+      <p>MARKET IMPACT PREDICTOR // NLP + ML ENGINE</p>
+    </div>
+  </div>
+  <div class="header-stats">
+    <div class="stat-pill"><div class="dot dot-green"></div> LR 95.3% Acc</div>
+    <div class="stat-pill"><div class="dot dot-blue"></div> RF 100% Acc</div>
+    <div class="stat-pill"><div class="dot dot-red"></div> 15 Headlines</div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ── Live Analyzer ── -->
+  <div class="input-section">
+    <h2>⚡ Live Headline Analyzer</h2>
+    <div class="input-row">
+      <input class="headline-input" id="hl-input" type="text"
+        placeholder="Enter a financial headline to analyze..."
+        value="Apple beats Q3 earnings by 15%, iPhone sales surge to record high" />
+      <button class="analyze-btn" onclick="analyzeInput()">Analyze →</button>
+    </div>
+    <div id="live-result">
+      <div class="result-row" id="result-badges"></div>
+      <div class="prob-bars" id="result-probs"></div>
+    </div>
+  </div>
+
+  <!-- ── KPI Metrics ── -->
+  <div class="grid-3" style="margin-bottom:20px;">
+    <div class="metric-card bull delay-1">
+      <div class="bg-glow"></div>
+      <div class="metric-label">Bullish Headlines</div>
+      <div class="metric-value">7</div>
+      <div class="metric-sub">46.7% of analyzed</div>
+    </div>
+    <div class="metric-card bear delay-2">
+      <div class="bg-glow"></div>
+      <div class="metric-label">Bearish Headlines</div>
+      <div class="metric-value">4</div>
+      <div class="metric-sub">26.7% of analyzed</div>
+    </div>
+    <div class="metric-card neu delay-3">
+      <div class="bg-glow"></div>
+      <div class="metric-label">Neutral Headlines</div>
+      <div class="metric-value">4</div>
+      <div class="metric-sub">26.7% of analyzed</div>
+    </div>
+  </div>
+
+  <!-- ── Sentiment Distribution + Market Impact Donut ── -->
+  <div class="grid-2">
+    <div class="card delay-1">
+      <div class="card-label">Sentiment Distribution</div>
+      <div class="chart-wrap" style="height:220px;">
+        <canvas id="sentimentChart"></canvas>
+      </div>
+    </div>
+    <div class="card delay-2">
+      <div class="card-label">Market Impact Distribution</div>
+      <div class="chart-wrap" style="height:220px;">
+        <canvas id="impactChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Price Chart + Stock Tabs ── -->
+  <div class="card delay-2" style="margin-bottom:20px;">
+    <div class="card-label">90-Day Price & Technical Indicators</div>
+    <div class="ticker-tabs" id="ticker-tabs">
+      <button class="ticker-tab active" onclick="setTicker('AAPL',this)">AAPL</button>
+      <button class="ticker-tab" onclick="setTicker('NVDA',this)">NVDA</button>
+      <button class="ticker-tab" onclick="setTicker('MSFT',this)">MSFT</button>
+      <button class="ticker-tab" onclick="setTicker('TSLA',this)">TSLA</button>
+    </div>
+    <div class="chart-wrap" style="height:260px;">
+      <canvas id="priceChart"></canvas>
+    </div>
+  </div>
+
+  <!-- ── Headlines Table + Feature Importance ── -->
+  <div class="grid-5-3">
+    <div class="card delay-3">
+      <div class="card-label">Analyzed Headlines</div>
+      <table class="headlines-table">
+        <thead>
+          <tr>
+            <th>Headline</th>
+            <th style="padding-left:16px">Sentiment</th>
+            <th style="padding-left:16px">Impact</th>
+            <th style="padding-left:16px">Compound</th>
+            <th style="padding-left:16px">Confidence</th>
+          </tr>
+        </thead>
+        <tbody id="headlines-tbody"></tbody>
+      </table>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px;">
+      <div class="card delay-3">
+        <div class="card-label">Feature Importance (RF)</div>
+        <div id="feat-imp-bars"></div>
+      </div>
+      <div class="card delay-4">
+        <div class="card-label">Model Accuracy</div>
+        <div class="model-row">
+          <div>
+            <div class="model-name">Logistic Regression</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">L2 Regularized</div>
+          </div>
+          <div class="model-acc acc-blue">95.3%</div>
+        </div>
+        <div class="model-row" style="border:none;">
+          <div>
+            <div class="model-name">Random Forest</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">200 estimators · depth 8</div>
+          </div>
+          <div class="model-acc acc-bull">100.0%</div>
+        </div>
+        <div style="margin-top:16px; padding:12px; background:var(--bg); border-radius:8px; font-family:'Space Mono',monospace; font-size:10px; color:var(--text-dim); line-height:1.6;">
+          Trained on 1,200 samples · Tested on 300<br>
+          Ensemble: 40% LR + 60% RF<br>
+          Classes: Bullish / Neutral / Bearish
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RSI Chart ── -->
+  <div class="card delay-4">
+    <div class="card-label">RSI · Relative Strength Index (14-period)</div>
+    <div class="chart-wrap" style="height:140px;">
+      <canvas id="rsiChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────────
+const DATA = {"headlines":[{"headline":"Apple beats Q3 earnings by 15%, iPhone sales surge to record high","sentiment":"Positive","compound":0.6705,"market_impact":"Bullish","confidence":0.8453,"bullish_prob":0.8453,"neutral_prob":0.1547,"bearish_prob":0.0},{"headline":"Federal Reserve raises interest rates by 75bps, markets tumble","sentiment":"Negative","compound":-0.6124,"market_impact":"Bearish","confidence":0.9547,"bullish_prob":0.012,"neutral_prob":0.0333,"bearish_prob":0.9547},{"headline":"Tesla reports Q2 delivery numbers in line with analyst estimates","sentiment":"Neutral","compound":0.0,"market_impact":"Neutral","confidence":0.9698,"bullish_prob":0.0204,"neutral_prob":0.9698,"bearish_prob":0.0098},{"headline":"Nvidia revenue skyrockets 220% on AI chip demand, stock soars","sentiment":"Positive","compound":0.3612,"market_impact":"Bullish","confidence":0.7856,"bullish_prob":0.7856,"neutral_prob":0.1331,"bearish_prob":0.0813},{"headline":"Amazon lays off 18,000 employees amid economic slowdown","sentiment":"Neutral","compound":0.0,"market_impact":"Neutral","confidence":0.9317,"bullish_prob":0.0454,"neutral_prob":0.9317,"bearish_prob":0.0229},{"headline":"Microsoft acquires gaming company for $68.7B in landmark deal","sentiment":"Neutral","compound":0.0,"market_impact":"Bullish","confidence":0.5126,"bullish_prob":0.5126,"neutral_prob":0.264,"bearish_prob":0.2233},{"headline":"GDP growth contracts 0.9% in Q2, recession fears mount","sentiment":"Negative","compound":-0.1027,"market_impact":"Neutral","confidence":0.4821,"bullish_prob":0.1123,"neutral_prob":0.4821,"bearish_prob":0.4055},{"headline":"Goldman Sachs upgrades S&P 500 target, bullish market outlook","sentiment":"Positive","compound":0.6705,"market_impact":"Bullish","confidence":0.9159,"bullish_prob":0.9159,"neutral_prob":0.0841,"bearish_prob":0.0},{"headline":"ExxonMobil profits collapse as oil prices plummet 30%","sentiment":"Negative","compound":-0.8834,"market_impact":"Bearish","confidence":0.8561,"bullish_prob":0.1273,"neutral_prob":0.0166,"bearish_prob":0.8561},{"headline":"FDA approves Pfizer's new drug, biotech stocks rally","sentiment":"Positive","compound":0.6369,"market_impact":"Bullish","confidence":0.9285,"bullish_prob":0.9285,"neutral_prob":0.0715,"bearish_prob":0.0},{"headline":"JPMorgan warns of coming credit crisis as defaults rise","sentiment":"Negative","compound":-0.4588,"market_impact":"Bearish","confidence":0.9306,"bullish_prob":0.0189,"neutral_prob":0.0505,"bearish_prob":0.9306},{"headline":"Google announces $70B buyback program and dividend increase","sentiment":"Positive","compound":0.8402,"market_impact":"Bullish","confidence":0.88,"bullish_prob":0.88,"neutral_prob":0.111,"bearish_prob":0.009},{"headline":"Netflix subscriber growth disappoints, stock plunges 25%","sentiment":"Positive","compound":0.5574,"market_impact":"Bearish","confidence":0.5349,"bullish_prob":0.3394,"neutral_prob":0.1258,"bearish_prob":0.5349},{"headline":"Consumer confidence hits 10-year high on strong jobs market","sentiment":"Positive","compound":0.5423,"market_impact":"Bullish","confidence":0.9476,"bullish_prob":0.9476,"neutral_prob":0.052,"bearish_prob":0.0004},{"headline":"Walmart reports record quarterly earnings, raises full-year guidance","sentiment":"Neutral","compound":0.0,"market_impact":"Neutral","confidence":0.7998,"bullish_prob":0.1909,"neutral_prob":0.7998,"bearish_prob":0.0093}],"market_data":{"AAPL":{"dates":["2025-12-29","2025-12-30","2025-12-31","2026-01-01","2026-01-02","2026-01-05","2026-01-06","2026-01-07","2026-01-08","2026-01-09","2026-01-12","2026-01-13","2026-01-14","2026-01-15","2026-01-16","2026-01-19","2026-01-20","2026-01-21","2026-01-22","2026-01-23","2026-01-26","2026-01-27","2026-01-28","2026-01-29","2026-01-30","2026-02-02","2026-02-03","2026-02-04","2026-02-05","2026-02-06","2026-02-09","2026-02-10","2026-02-11","2026-02-12","2026-02-13","2026-02-16","2026-02-17","2026-02-18","2026-02-19","2026-02-20"],"close":[217.84,220.43,223.36,223.57,219.73,220.57,217.81,225.32,227.93,226.08,229.1,226.24,223.44,219.48,221.53,222.56,215.7,224.27,224.87,223.87,223.32,220.86,214.82,207.62,215.12,217.72,217.61,213.87,217.28,219.97,218.51,212.78,215.48,220.32,226.6,229.1,230.44,224.61,224.07,227.12],"volume":[57645010,99493322,31703314,44098623,30840648,69567744,67855203,20643831,23320102,47146369,117998069,77930276,31591396,65274449,38690849,73831540,100063260,119622230,88825136,95869895,102814108,60991435,33608041,48125679,65091927,99849936,95963505,118587011,34365460,30457246,60317291,51556640,114903610,94864065,55411368,119713444,112456398,45721252,98280612,31969300],"daily_return":[-0.0164,0.0119,0.0133,0.0009,-0.0172,0.0038,-0.0125,0.0345,0.0116,-0.0081,0.0134,-0.0125,-0.0124,-0.0177,0.0093,0.0046,-0.0308,0.0398,0.0027,-0.0044,-0.0025,-0.011,-0.0273,-0.0335,0.0361,0.0121,-0.0005,-0.0172,0.016,0.0124,-0.0067,-0.0262,0.0127,0.0224,0.0285,0.011,0.0058,-0.0253,-0.0024,0.0136],"rsi":[67.02,68.4,68.64,64.95,59.34,56.78,44.76,55.96,55.11,46.11,46.91,50.87,46.6,47.6,54.63,52.79,40.92,50.69,55.43,53.47,56.08,44.45,34.99,31.17,36.94,42.0,44.23,44.42,45.89,47.57,52.93,37.26,40.06,46.52,52.89,57.25,64.98,66.74,60.22,60.63],"sma_20":[211.41,212.86,214.41,215.91,216.82,217.98,218.88,220.15,221.42,222.3,223.26,223.88,223.93,223.93,223.85,223.51,222.7,222.64,222.57,222.69,222.96,222.98,222.55,221.76,221.53,221.38,221.37,220.8,220.27,219.96,219.43,218.76,218.36,218.4,218.66,218.98,219.72,219.74,219.7,219.86]},"NVDA":{"dates":["2025-12-29","2025-12-30","2025-12-31","2026-01-01","2026-01-02","2026-01-05","2026-01-06","2026-01-07","2026-01-08","2026-01-09","2026-01-12","2026-01-13","2026-01-14","2026-01-15","2026-01-16","2026-01-19","2026-01-20","2026-01-21","2026-01-22","2026-01-23","2026-01-26","2026-01-27","2026-01-28","2026-01-29","2026-01-30","2026-02-02","2026-02-03","2026-02-04","2026-02-05","2026-02-06","2026-02-09","2026-02-10","2026-02-11","2026-02-12","2026-02-13","2026-02-16","2026-02-17","2026-02-18","2026-02-19","2026-02-20"],"close":[154.55,155.27,154.7,151.6,151.97,153.61,150.98,150.5,148.65,145.77,147.11,144.86,148.21,150.04,155.19,153.96,152.23,152.97,155.49,157.17,158.1,160.41,162.62,165.19,168.51,166.77,168.2,160.39,155.61,151.17,150.13,149.49,145.34,144.0,142.28,142.11,141.08,142.46,140.64,142.5],"rsi":[51.96,54.34,62.13,48.44,49.59,51.96,51.1,49.23,45.0,39.18,34.07,17.43,26.18,36.25,51.15,47.72,45.85,52.5,55.94,56.0,62.73,66.61,73.14,82.52,83.61,84.96,83.97,64.62,50.59,46.35,47.21,45.35,37.0,33.0,29.98,25.53,20.24,17.53,8.4,13.89],"sma_20":[154.07,154.17,154.15,153.93,153.77,153.73,153.61,153.5,153.52,153.19,152.94,152.55,152.45,152.4,152.59,152.66,152.47,152.05,151.74,151.74,151.92,152.18,152.57,153.25,154.08,154.74,155.6,156.09,156.44,156.71,156.86,157.09,156.95,156.65,156.0,155.41,154.85,154.33,153.58,152.85]},"MSFT":{"dates":["2025-12-29","2025-12-30","2025-12-31","2026-01-01","2026-01-02","2026-01-05","2026-01-06","2026-01-07","2026-01-08","2026-01-09","2026-01-12","2026-01-13","2026-01-14","2026-01-15","2026-01-16","2026-01-19","2026-01-20","2026-01-21","2026-01-22","2026-01-23","2026-01-26","2026-01-27","2026-01-28","2026-01-29","2026-01-30","2026-02-02","2026-02-03","2026-02-04","2026-02-05","2026-02-06","2026-02-09","2026-02-10","2026-02-11","2026-02-12","2026-02-13","2026-02-16","2026-02-17","2026-02-18","2026-02-19","2026-02-20"],"close":[183.72,180.68,180.15,184.53,180.15,176.44,177.5,181.19,182.4,181.0,180.93,180.69,180.89,176.24,173.34,175.4,176.29,180.37,180.69,177.82,186.35,187.56,186.46,191.73,187.56,193.86,191.88,188.98,194.35,195.84,197.84,200.21,202.59,202.19,198.85,199.48,199.05,195.14,198.0,195.57],"rsi":[48.81,46.53,47.73,44.24,36.04,34.81,28.47,39.05,42.52,38.61,34.1,35.24,42.54,30.41,33.51,41.34,43.75,43.19,51.01,52.68,63.35,60.4,56.64,65.59,58.61,64.78,61.85,64.29,72.32,71.99,72.64,71.61,72.84,76.79,65.51,65.01,66.12,54.52,64.35,52.64],"sma_20":[187.5,187.84,188.1,188.37,188.04,187.53,187.15,186.97,186.96,186.47,185.77,185.14,184.23,183.47,182.68,181.89,181.0,180.39,180.12,179.52,179.65,180.0,180.31,180.67,181.04,181.91,182.63,183.02,183.62,184.36,185.21,186.18,187.27,188.57,189.84,191.05,192.18,192.92,193.79,194.67]},"TSLA":{"dates":["2025-12-29","2025-12-30","2025-12-31","2026-01-01","2026-01-02","2026-01-05","2026-01-06","2026-01-07","2026-01-08","2026-01-09","2026-01-12","2026-01-13","2026-01-14","2026-01-15","2026-01-16","2026-01-19","2026-01-20","2026-01-21","2026-01-22","2026-01-23","2026-01-26","2026-01-27","2026-01-28","2026-01-29","2026-01-30","2026-02-02","2026-02-03","2026-02-04","2026-02-05","2026-02-06","2026-02-09","2026-02-10","2026-02-11","2026-02-12","2026-02-13","2026-02-16","2026-02-17","2026-02-18","2026-02-19","2026-02-20"],"close":[126.89,131.38,134.43,132.15,132.85,133.17,131.52,136.16,143.86,140.27,142.03,139.9,139.24,137.72,136.3,133.19,134.46,134.0,131.43,130.63,129.64,126.31,128.29,131.89,131.21,132.63,139.99,142.01,141.2,137.81,139.28,143.63,144.4,137.55,134.39,133.82,131.22,131.21,137.36,134.6],"rsi":[19.14,32.02,40.78,37.97,36.79,38.14,34.57,46.22,61.89,64.18,64.7,60.2,60.31,57.57,63.11,52.63,50.06,52.98,47.83,46.19,47.12,34.27,19.61,33.65,27.95,34.75,51.24,56.91,58.05,57.53,57.79,63.85,69.67,58.86,55.77,59.77,53.75,49.04,57.51,52.33],"sma_20":[138.51,137.63,136.98,136.36,135.87,135.4,134.86,134.58,134.77,134.79,134.83,134.79,134.68,134.63,134.7,134.87,135.04,135.13,135.14,135.08,135.22,134.96,134.66,134.64,134.56,134.53,134.96,135.25,135.12,134.99,134.86,135.04,135.3,135.29,135.2,135.23,135.07,134.93,135.22,135.42]}},"feature_importance":[{"feature":"compound","importance":0.14},{"feature":"neg","importance":0.111},{"feature":"sentiment_spread","importance":0.091},{"feature":"kw_ratio","importance":0.074},{"feature":"sentiment_abs","importance":0.07},{"feature":"char_count","importance":0.069},{"feature":"caps_ratio","importance":0.051},{"feature":"bullish_kw_count","importance":0.05},{"feature":"pos","importance":0.05},{"feature":"dollar_mentioned","importance":0.039}],"model_metrics":{"lr_accuracy":0.9533,"rf_accuracy":1.0,"n_train":1200,"n_test":300},"sentiment_summary":{"Positive":7,"Neutral":4,"Negative":4},"impact_summary":{"Bullish":7,"Neutral":4,"Bearish":4}};
+
+const chartDefaults = {
+  responsive:true, maintainAspectRatio:false,
+  plugins:{ legend:{ labels:{ color:'#64748b', font:{family:"'Space Mono',monospace",size:10} } } }
+};
+
+// ── Donut charts ──────────────────────────────────────────────────────────────
+new Chart(document.getElementById('sentimentChart'), {
+  type:'doughnut',
+  data:{
+    labels:['Positive','Neutral','Negative'],
+    datasets:[{
+      data:[DATA.sentiment_summary.Positive, DATA.sentiment_summary.Neutral, DATA.sentiment_summary.Negative],
+      backgroundColor:['rgba(0,229,160,0.85)','rgba(245,166,35,0.85)','rgba(255,61,113,0.85)'],
+      borderColor:['#00e5a0','#f5a623','#ff3d71'], borderWidth:2,
+      hoverOffset:6
+    }]
+  },
+  options:{
+    ...chartDefaults,
+    cutout:'68%',
+    plugins:{
+      legend:{ position:'right', labels:{ color:'#94a3b8', font:{size:11}, padding:12 } },
+      tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.raw}` } }
+    }
+  }
+});
+
+new Chart(document.getElementById('impactChart'), {
+  type:'doughnut',
+  data:{
+    labels:['Bullish','Neutral','Bearish'],
+    datasets:[{
+      data:[DATA.impact_summary.Bullish, DATA.impact_summary.Neutral, DATA.impact_summary.Bearish],
+      backgroundColor:['rgba(0,229,160,0.85)','rgba(77,159,255,0.85)','rgba(255,61,113,0.85)'],
+      borderColor:['#00e5a0','#4d9fff','#ff3d71'], borderWidth:2,
+      hoverOffset:6
+    }]
+  },
+  options:{
+    ...chartDefaults,
+    cutout:'68%',
+    plugins:{
+      legend:{ position:'right', labels:{ color:'#94a3b8', font:{size:11}, padding:12 } },
+    }
+  }
+});
+
+// ── Price chart ───────────────────────────────────────────────────────────────
+let priceChart = null, rsiChart = null, currentTicker = 'AAPL';
+
+function buildPriceChart(ticker) {
+  const d = DATA.market_data[ticker];
+  if(priceChart) priceChart.destroy();
+  priceChart = new Chart(document.getElementById('priceChart'), {
+    type:'line',
+    data:{
+      labels: d.dates,
+      datasets:[
+        {
+          label:'Close',
+          data: d.close,
+          borderColor:'#4d9fff', borderWidth:2,
+          pointRadius:0, tension:0.3,
+          fill:{ target:'origin', above:'rgba(77,159,255,0.05)' }
+        },
+        {
+          label:'SMA 20',
+          data: d.sma_20,
+          borderColor:'rgba(168,85,247,0.7)', borderWidth:1.5,
+          borderDash:[4,3], pointRadius:0, tension:0.3
+        }
+      ]
+    },
+    options:{
+      ...chartDefaults,
+      scales:{
+        x:{ ticks:{ color:'#475569', maxTicksLimit:8, font:{family:"'Space Mono',monospace",size:9} }, grid:{ color:'rgba(30,45,69,0.5)' } },
+        y:{ ticks:{ color:'#475569', font:{family:"'Space Mono',monospace",size:9} }, grid:{ color:'rgba(30,45,69,0.5)' } }
+      },
+      plugins:{
+        legend:{ labels:{ color:'#64748b', font:{family:"'Space Mono',monospace",size:10}, usePointStyle:true, pointStyleWidth:8 } }
+      },
+      interaction:{ mode:'index', intersect:false }
+    }
+  });
+}
+
+function buildRsiChart(ticker) {
+  const d = DATA.market_data[ticker];
+  if(rsiChart) rsiChart.destroy();
+  rsiChart = new Chart(document.getElementById('rsiChart'), {
+    type:'line',
+    data:{
+      labels: d.dates,
+      datasets:[
+        {
+          label:'RSI(14)',
+          data: d.rsi,
+          borderColor:'#f5a623', borderWidth:1.5,
+          pointRadius:0, tension:0.3, fill:false
+        },
+        {
+          label:'Overbought 70',
+          data: d.dates.map(()=>70),
+          borderColor:'rgba(255,61,113,0.3)', borderWidth:1, borderDash:[3,3], pointRadius:0
+        },
+        {
+          label:'Oversold 30',
+          data: d.dates.map(()=>30),
+          borderColor:'rgba(0,229,160,0.3)', borderWidth:1, borderDash:[3,3], pointRadius:0
+        }
+      ]
+    },
+    options:{
+      ...chartDefaults,
+      scales:{
+        x:{ ticks:{ color:'#475569', maxTicksLimit:8, font:{family:"'Space Mono',monospace",size:9} }, grid:{ color:'rgba(30,45,69,0.5)' } },
+        y:{ min:0, max:100, ticks:{ color:'#475569', font:{family:"'Space Mono',monospace",size:9}, stepSize:25 }, grid:{ color:'rgba(30,45,69,0.5)' } }
+      },
+      plugins:{
+        legend:{ labels:{ color:'#64748b', font:{family:"'Space Mono',monospace",size:10}, usePointStyle:true, pointStyleWidth:8 } }
+      }
+    }
+  });
+}
+
+function setTicker(ticker, btn) {
+  currentTicker = ticker;
+  document.querySelectorAll('.ticker-tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  buildPriceChart(ticker);
+  buildRsiChart(ticker);
+}
+
+buildPriceChart('AAPL');
+buildRsiChart('AAPL');
+
+// ── Headlines table ───────────────────────────────────────────────────────────
+const tbody = document.getElementById('headlines-tbody');
+DATA.headlines.forEach((r, i) => {
+  const sentBadgeClass = r.sentiment==='Positive' ? 'badge-pos' : r.sentiment==='Negative' ? 'badge-neg' : 'badge-neutral-s';
+  const impBadgeClass  = r.market_impact==='Bullish'? 'badge-bull': r.market_impact==='Bearish'? 'badge-bear': 'badge-neu';
+  const pct = Math.abs(r.compound) * 50;
+  const side = r.compound > 0 ? 'pos' : r.compound < 0 ? 'neg' : 'ctr';
+  const pctConf = Math.round(r.confidence * 100);
+  const circumference = 2 * Math.PI * 14;
+  const dash = (pctConf / 100) * circumference;
+  const color = r.market_impact==='Bullish'?'#00e5a0': r.market_impact==='Bearish'?'#ff3d71':'#f5a623';
+
+  const tr = document.createElement('tr');
+  tr.className = 'data-row';
+  tr.style.animationDelay = `${i*0.04}s`;
+  tr.innerHTML = `
+    <td><div class="hl-text" title="${r.headline}">${r.headline}</div></td>
+    <td style="padding-left:16px"><span class="result-badge ${sentBadgeClass}">${r.sentiment}</span></td>
+    <td style="padding-left:16px"><span class="result-badge ${impBadgeClass}">${r.market_impact}</span></td>
+    <td style="padding-left:16px">
+      <div class="compound-bar">
+        <div class="compound-track">
+          <div class="compound-fill ${side}" style="width:${pct}%"></div>
+        </div>
+        <span class="compound-val">${r.compound>0?'+':''}${r.compound.toFixed(3)}</span>
+      </div>
+    </td>
+    <td style="padding-left:16px">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="conf-ring">
+          <svg viewBox="0 0 32 32">
+            <circle cx="16" cy="16" r="14" fill="none" stroke="rgba(30,45,69,0.8)" stroke-width="3"/>
+            <circle cx="16" cy="16" r="14" fill="none" stroke="${color}" stroke-width="3"
+              stroke-dasharray="${dash} ${circumference}" stroke-linecap="round"/>
+          </svg>
+          <div class="conf-ring-val">${pctConf}%</div>
+        </div>
+      </div>
+    </td>
+  `;
+  tbody.appendChild(tr);
+});
+
+// ── Feature importance ────────────────────────────────────────────────────────
+const maxImp = Math.max(...DATA.feature_importance.map(f=>f.importance));
+const featContainer = document.getElementById('feat-imp-bars');
+DATA.feature_importance.forEach(f => {
+  const pct = Math.round((f.importance / maxImp) * 100);
+  featContainer.innerHTML += `
+    <div class="feat-row">
+      <div class="feat-header">
+        <span class="feat-name">${f.feature}</span>
+        <span class="feat-pct">${(f.importance*100).toFixed(1)}%</span>
+      </div>
+      <div class="feat-track"><div class="feat-fill" style="width:${pct}%"></div></div>
+    </div>`;
+});
+
+// ── Live analyzer ─────────────────────────────────────────────────────────────
+function analyzeInput() {
+  const text = document.getElementById('hl-input').value.trim();
+  if(!text) return;
+
+  // Simple VADER-like heuristic in JS
+  const lower = text.toLowerCase();
+  const bullishKws = ['beat','surge','soar','record','profit','growth','upgrade','rally','boom','outperform','bullish','buyback','dividend','exceed','skyrocket','soars','rallies','breakthrough','rebound','recover'];
+  const bearishKws = ['miss','crash','plunge','loss','decline','downgrade','layoff','bankruptcy','fraud','warning','weak','disappoint','recall','investigation','bearish','plummets','tumble','crisis','collapse'];
+
+  let bullCount = bullishKws.filter(k=>lower.includes(k)).length;
+  let bearCount = bearishKws.filter(k=>lower.includes(k)).length;
+  let compound = (bullCount - bearCount) / Math.max(bullCount + bearCount, 1);
+  compound = Math.max(-1, Math.min(1, compound * 0.8));
+
+  let sentiment = compound >= 0.05 ? 'Positive' : compound <= -0.05 ? 'Negative' : 'Neutral';
+  let impact = compound >= 0.08 ? 'Bullish' : compound <= -0.08 ? 'Bearish' : 'Neutral';
+  let confidence = 0.5 + Math.abs(compound) * 0.45;
+
+  let bull = impact==='Bullish' ? confidence : 0.15 * confidence;
+  let bear = impact==='Bearish' ? confidence : 0.15 * confidence;
+  let neu  = 1 - bull - bear;
+
+  const sentBadgeClass = sentiment==='Positive'?'badge-pos':sentiment==='Negative'?'badge-neg':'badge-neutral-s';
+  const impBadgeClass  = impact==='Bullish'?'badge-bull':impact==='Bearish'?'badge-bear':'badge-neu';
+
+  document.getElementById('result-badges').innerHTML = `
+    <span class="result-badge ${sentBadgeClass}">${sentiment === 'Positive' ? '🟢' : sentiment==='Negative'?'🔴':'🟡'} ${sentiment}</span>
+    <span class="result-badge ${impBadgeClass}">${impact==='Bullish'?'📈':impact==='Bearish'?'📉':'⚖️'} ${impact}</span>
+    <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text-dim);">
+      Compound: <span style="color:${compound>=0?'#00e5a0':'#ff3d71'}">${compound>=0?'+':''}${compound.toFixed(3)}</span>
+    </span>
+    <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text-dim);">
+      Confidence: <strong style="color:var(--text-mid)">${Math.round(confidence*100)}%</strong>
+    </span>`;
+
+  document.getElementById('result-probs').innerHTML = `
+    <div class="prob-bar-item">
+      <div class="prob-bar-label">📈 Bullish</div>
+      <div class="prob-bar-track"><div class="prob-bar-fill fill-bull" style="width:${Math.round(bull*100)}%"></div></div>
+      <div class="prob-bar-pct">${Math.round(bull*100)}%</div>
+    </div>
+    <div class="prob-bar-item">
+      <div class="prob-bar-label">⚖️ Neutral</div>
+      <div class="prob-bar-track"><div class="prob-bar-fill fill-neu" style="width:${Math.round(neu*100)}%"></div></div>
+      <div class="prob-bar-pct">${Math.round(neu*100)}%</div>
+    </div>
+    <div class="prob-bar-item">
+      <div class="prob-bar-label">📉 Bearish</div>
+      <div class="prob-bar-track"><div class="prob-bar-fill fill-bear" style="width:${Math.round(bear*100)}%"></div></div>
+      <div class="prob-bar-pct">${Math.round(bear*100)}%</div>
+    </div>`;
+
+  document.getElementById('live-result').style.display = 'block';
+}
+
+// Auto-analyze on load
+analyzeInput();
+document.getElementById('hl-input').addEventListener('keydown', e => { if(e.key==='Enter') analyzeInput(); });
+</script>
+</body>
+</html>
